@@ -40,7 +40,7 @@ use crate::protocol::i3bar_event::{I3BarEvent, MouseButton};
 use crate::scheduler::Task;
 use crate::subprocess::spawn_child_async;
 use crate::widgets::text::TextWidget;
-use crate::widgets::{I3BarWidget, Spacing, State};
+use crate::widgets::{I3BarWidget, State};
 
 trait SoundDevice {
     fn volume(&self) -> u32;
@@ -408,8 +408,11 @@ impl PulseAudioClient {
 
                 loop {
                     // make sure mainloop dispatched everything
-                    for _ in 0..10 {
+                    loop {
                         connection.iterate(false).unwrap();
+                        if connection.context.borrow().get_state() == PulseState::Ready {
+                            break;
+                        }
                     }
 
                     match recv_req.recv() {
@@ -595,11 +598,11 @@ impl PulseAudioClient {
 
 #[cfg(feature = "pulseaudio")]
 impl PulseAudioSoundDevice {
-    fn new(device_kind: DeviceKind) -> Result<Self> {
+    fn new(device_kind: DeviceKind, name: Option<String>) -> Result<Self> {
         PulseAudioClient::send(PulseAudioClientRequest::GetDefaultDevice)?;
 
         let device = PulseAudioSoundDevice {
-            name: None,
+            name,
             description: None,
             active_port: None,
             device_kind,
@@ -614,11 +617,6 @@ impl PulseAudioSoundDevice {
         ))?;
 
         Ok(device)
-    }
-
-    fn with_name(mut self, name: String) -> Self {
-        self.name = Some(name);
-        self
     }
 
     fn name(&self) -> String {
@@ -869,12 +867,7 @@ impl ConfigBlock for Sound {
         let pulseaudio_device: Result<PulseAudioSoundDevice> = match block_config.driver {
             #[cfg(feature = "pulseaudio")]
             SoundDriver::Auto | SoundDriver::PulseAudio => {
-                let sound_device = PulseAudioSoundDevice::new(block_config.device_kind);
-
-                match block_config.name.as_ref() {
-                    None => sound_device,
-                    Some(name) => sound_device.map(|device| device.with_name(name.to_string())),
-                }
+                PulseAudioSoundDevice::new(block_config.device_kind, block_config.name.clone())
             }
             _ => Err(BlockError(
                 "sound".into(),
@@ -964,7 +957,6 @@ impl Block for Sound {
         if self.device.muted() {
             self.text.set_icon(&self.icon(0, headphones))?;
             if self.show_volume_when_muted {
-                self.text.set_spacing(Spacing::Normal);
                 self.text.set_texts(texts);
             } else {
                 self.text.set_text(String::new());
@@ -972,7 +964,6 @@ impl Block for Sound {
             self.text.set_state(State::Warning);
         } else {
             self.text.set_icon(&self.icon(volume, headphones))?;
-            self.text.set_spacing(Spacing::Normal);
             self.text.set_state(State::Idle);
             self.text.set_texts(texts);
         }

@@ -486,10 +486,10 @@ pub struct NetworkManagerConfig {
     /// Connection formatter.
     pub connection_format: FormatTemplate,
 
-    /// Interface name regex patterns to include.
+    /// Interface name regex patterns to ignore.
     pub interface_name_exclude: Vec<String>,
 
-    /// Interface name regex patterns to ignore.
+    /// Interface name regex patterns to include.
     pub interface_name_include: Vec<String>,
 }
 
@@ -642,7 +642,7 @@ impl Block for NetworkManager {
                 connections
                     .into_iter()
                     .filter_map(|conn| {
-                        // Hide vpn connections since it's devices are the devices of it's parent connection
+                        // Hide vpn connection(s) since its devices are the devices of its parent connection
                         if let Ok(true) = conn.vpn(&self.dbus_conn) {
                             return None;
                         };

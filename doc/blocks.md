@@ -206,7 +206,7 @@ Creates a block which displays the current battery state (Full, Charging or Disc
 
 The battery block collapses when the battery is fully charged -- or, in the case of some Thinkpad batteries, when it reports "Not charging".
 
-The battery block supports reading charging and status information from either `sysfs` or the [UPower](https://upower.freedesktop.org/) D-Bus interface. These "drivers" have largely identical features, but UPower does include support for `device = "DisplayDevice"`, which treats all physical power sources as a single logical battery. This is particularly useful if your system has multiple batteries.
+The battery block supports reading charging and status information from either `sysfs`, [apcaccess](http://www.apcaccess.org/manual/manual.html#nis-server-client-configuration-using-the-net-driver), or the [UPower](https://upower.freedesktop.org/) D-Bus interface. These "drivers" have largely identical features, but UPower does include support for `device = "DisplayDevice"`, which treats all physical power sources as a single logical battery. This is particularly useful if your system has multiple batteries.
 
 #### Examples
 
@@ -241,13 +241,13 @@ format = "{percentage} {time}"
 
 Key | Values | Required | Default
 ----|--------|----------|--------
-`device` | The device in `/sys/class/power_supply/` to read from. When using UPower, this can also be `"DisplayDevice"`. | No | sysfs: the first device starting with `"BAT"` in `/sys/class/power_supply`, usually "BAT0". upower: first matching device returned by the `EnumerateDevices` D-Bus method`
-`driver` | One of `"sysfs"` or `"upower"`. | No | `"sysfs"`
-`interval` | Update interval, in seconds. Only relevant for `driver = "sysfs"`. | No | `10`
+`device` | `sysfs`: The device in `/sys/class/power_supply/` to read from.<br />`apcaccess`: IPv4Address/hostname:port<br/>`UPower`: this can be `"DisplayDevice"` or any of the other paths found by running `upower --enumerate`. | No | `sysfs`: the first device starting with `"BAT"` in `/sys/class/power_supply`, usually "BAT0".<br />`apcaccess`: "localhost:3551"<br />`upower`: first matching device returned by the `EnumerateDevices` D-Bus method`
+`driver` | One of `"sysfs"`, `"apcaccess"`, or `"upower"`. | No | `"sysfs"`
+`interval` | Update interval, in seconds. Only relevant for `driver = "sysfs" \|\| "apcaccess"`. | No | `10`
 `format` | A string to customise the output of this block. See below for available placeholders. Text may need to be escaped, refer to [Escaping Text](#escaping-text). | No | `"{percentage}"`
 `full_format` | Same as `format` but for when the battery is full. | No | `"{percentage}"`
 `missing_format` | Same as `format` but for when the specified battery is missing. | No | `"{percentage}"`
-`allow_missing` | Don't display errors when the battery cannot be found. Only works with the `sysfs` driver. | No | `false`
+`allow_missing` | Don't display errors when the battery cannot be found. | No | `false`
 `hide_missing` | Completely hide this block if the battery cannot be found. Only works in combination with `allow_missing`. | No | `false`
 `full_threshold` | Percentage at which the battery is considered full (`full_format` shown) | No | `100`
 `good` | Minimum battery level, where state is set to good. | No | `60`
@@ -667,8 +667,8 @@ format = "{ip} {country_code}"
 Key | Values | Required | Default
 ----|--------|----------|--------
 `format` | A string to customise the output of this block. See below for available placeholders. Text may need to be escaped, refer to [Escaping Text](#escaping-text). | No | `"{address} {country_flag}"`
-`refresh_interval_success` | Interval in seconds for automatic updates when the previous update was successful | No | 300
-`refresh_interval_failure` | Interval in seconds for automatic updates when the previous update failed | No | 15
+`interval` | Interval in seconds for automatic updates when the previous update was successful | No | 300
+`error_interval` | Interval in seconds for automatic updates when the previous update failed | No | 15
 `with_network_manager` | If 'true', listen for NetworkManager events and update the IP immediately if there was a change | No | "true"
 
 #### Available Format Keys
@@ -944,6 +944,7 @@ Four drivers are available:
 - `setxkbmap` which polls setxkbmap to get the current layout
 - `localebus` which can read asynchronous updates from the systemd `org.freedesktop.locale1` D-Bus path
 - `kbddbus` which uses [kbdd](https://github.com/qnikst/kbdd) to monitor per-window layout changes via DBus
+- `xkbswitch` which uses [xkb-switch](https://github.com/grwlf/xkb-switch) to show the current layout and variant. This works when `setxkbmap` is used to set a comma separated list of layouts, such as `us,es,fr`.
 - `sway` which can read asynchronous updates from the sway IPC
 
 Which of these methods is appropriate will depend on your system setup.
@@ -957,6 +958,16 @@ Check `setxkbmap` every 15 seconds:
 block = "keyboard_layout"
 driver = "setxkbmap"
 interval = 15
+```
+
+Use the [`xkb-switch`](https://github.com/grwlf/xkb-switch) X11 tool to switch to next `setxkbmap` layout on click:
+
+```toml
+[[block]]
+block = "keyboard_layout"
+driver = "setxkbmap"
+on_click = "xkb-switch -n"
+interval = 1
 ```
 
 Listen to D-Bus for changes:
@@ -973,6 +984,17 @@ Listen to kbdd for changes:
 [[block]]
 block = "keyboard_layout"
 driver = "kbddbus"
+```
+
+Poll `xkb-switch` for current layout and variant:
+
+```toml
+[[block]]
+block = "keyboard_layout"
+driver = "xkbswitch"
+on_click = "xkb-switch -n"
+format = "{layout} {variant}"
+interval = 1
 ```
 
 Listen to sway for changes:
@@ -1057,6 +1079,8 @@ Key | Values | Required | Default
 
 Creates a block which shows unread mails. Only supports maildir format.
 
+NOTE: This block can only be used if you build with `cargo build --features=maildir`
+
 #### Examples
 
 ```toml
@@ -1078,7 +1102,7 @@ Key | Values | Required | Default
 `threshold_critical` | Number of unread mails where state is set to critical. | No | `10`
 `interval` | Update interval, in seconds. | No | `5`
 `display_type` | Which part of the maildir to count: `"new"`, `"cur"`, or `"all"`. | No | `"new"`
-`icon` | Whether or not to prepend the output with the mail icon. | No | `true`
+`icon` | Whether or not to prepend the output with the mail icon. **Deprecated**: set `icons_format=""` to hide the icon. | No | `true`
 
 #### Icons Used
 
@@ -1116,13 +1140,18 @@ Key | Values | Required | Default
 `format_mem` | A string to customise the output of this block when in "Memory" view. See below for available placeholders. Text may need to be escaped, refer to [Escaping Text](#escaping-text). | No | `"{mem_free;M}/{mem_total;M}({mem_total_used_percents})"`
 `format_swap` | A string to customise the output of this block when in "Swap" view. See below for available placeholders. Text may need to be escaped, refer to [Escaping Text](#escaping-text). | No | `"{swap_free;M}/{swap_total;M}({swap_used_percents})"`
 `display_type` | Default view displayed on startup: "`memory`" or "`swap`". | No | `"memory"`
-`icons` | Whether the format string should be prepended with icons. | No | `true`
 `clickable` | Whether the view should switch between memory and swap on click. | No | `true`
 `warning_mem` | Percentage of memory usage, where state is set to warning. | No | `80.0`
 `warning_swap` | Percentage of swap usage, where state is set to warning. | No | `80.0`
 `critical_mem` | Percentage of memory usage, where state is set to critical. | No | `95.0`
 `critical_swap` | Percentage of swap usage, where state is set to critical. | No | `95.0`
 `interval` | The delay in seconds between an update. If `clickable`, an update is triggered on click. Integer values only. | No | `5`
+
+#### Deprecated options
+
+Key | Values | Required | Default
+----|--------|----------|--------
+`icons` | Whether the format string should be prepended with icons. Deprecated - set `icons_format = ""` to disable icons. | No | `true`
 
 #### Available Format Keys
 
@@ -1325,8 +1354,8 @@ Key | Values | Required | Default
 `ap_format` | Access point string formatter. See below for available placeholders. Text may need to be escaped, refer to [Escaping Text](#escaping-text). | No | `"{ssid}"`
 `device_format` | Device string formatter. See below for available placeholders. Text may need to be escaped, refer to [Escaping Text](#escaping-text). | No | `"{icon}{ap} {ips}"`
 `connection_format` | Connection string formatter. See below for available placeholders. Text may need to be escaped, refer to [Escaping Text](#escaping-text). | No | `"{devices}"`
-`interface_name_exclude` | A list of regex patterns for device interface names to ignore. | No | ""
-`interface_name_include` | A list of regex patterns for device interface names to include (only interfaces that match at least one are shown). | No | ""
+`interface_name_exclude` | A list of regex patterns for device interface names to ignore. | No | `""`
+`interface_name_include` | A list of regex patterns for device interface names to include (only interfaces that match at least one are shown). | No | `""`
 
 #### AP format string
 
@@ -1421,7 +1450,7 @@ Key | Values | Required | Default
 `threshold_good` | Mail count that triggers `good` state. | No | `99999`
 `threshold_info` | Mail count that triggers `info` state. | No | `99999`
 `name` | Label to show before the mail count. | No | `""`
-`no_icon` | Disable the mail icon. | No | `false`
+`no_icon` | Disable the mail icon. **Deprecated**: set `icons_format=""` to disable hide the icon. | No | `false`
 `interval` | Update interval in seconds. | No | `10`
 
 #### Icons Used
@@ -1814,6 +1843,9 @@ Key | Values | Required | Default
 `format` | A string to customise the output of this block. See below for available placeholders. Text may need to be escaped, refer to [Escaping Text](#escaping-text). | No | `"{count}"`
 `format_singular` | Same as `format` but for when exactly one task is pending. | No | `"{count}"`
 `format_everything_done` | Same as `format` but for when all tasks are completed. | No | `"{count}"`
+`data_location`| Directory in which taskwarrior stores its data files. | No | "~/.task"`
+
+Note: data_location is used to get instant notifications (changes in files inside that directory will trigger a check) only. The actual counts come from executing taskwarrior.
 
 #### Available Format Keys
 
@@ -2071,7 +2103,7 @@ in which case they must be provided in the environment variables
 
 Creates a block which shows screen information (name, brightness, resolution). With a click you can toggle through your active screens and with wheel up and down you can adjust the selected screens brightness. Regarding brightness control, xrandr changes the brightness of the display using gamma rather than changing the brightness in hardware, so if that is not desirable then consider using the `backlight` block instead.
 
-NOTE: Some users report issues (e.g. [here](https://github.com/greshake/i3status-rust/issues/274) and [here](https://github.com/greshake/i3status-rust/issues/668) when using this block. The cause is currently unknown, however setting a higher update interval may help.
+NOTE: Some users report issues (e.g. [here](https://github.com/greshake/i3status-rust/issues/274), [here](https://github.com/greshake/i3status-rust/issues/668) and [here](https://github.com/greshake/i3status-rust/issues/1364)) when using this block. The cause is currently unknown, however setting a higher update interval may help.
 
 #### Examples
 
@@ -2086,10 +2118,24 @@ resolution = true
 
 Key | Values | Required | Default
 ----|--------|----------|--------
-`icons` | Show icons for brightness and resolution. | No | `true`
-`resolution` | Shows the screens resolution. | No | `false`
+`format` | A string to customise the output of this block. See below for available placeholders. Text may need to be escaped, refer to [Escaping Text](#escaping-text). | No | Depends on `icons` and `resolution`. With default `icons` and `resolution` the default value is `"{display} {brightness_icon} {brightness}"``
 `step_width` | The steps brightness is in/decreased for the selected screen (When greater than 50 it gets limited to 50). | No | `5`
 `interval` | Update interval in seconds. | No | `5`
+
+Placeholder         | Value                        | Type   | Unit
+--------------------|------------------------------|--------|---------------
+`{display}`         | The name of a monitor        | Text   | -
+`{brightness}`      | The brightness of a monitor  | Number | %
+`{brightness_icon}` | A static icon                | Icon   | -
+`{resolution}`      | The resolution of a monitor  | Text   | -
+`{res_icon}`        | A static icon                | Icon   | -
+
+#### Deprecated options
+
+Key | Values | Required | Default
+----|--------|----------|--------
+`icons` | Show icons for brightness and resolution. | No | `true`
+`resolution` | Shows the screens resolution. | No | `false`
 
 #### Used Icons
 
